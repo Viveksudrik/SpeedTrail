@@ -77,7 +77,7 @@ export default function MemberTimeline({ groupId }: MemberTimelineProps) {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr md(1fr 320px)", gap: "24px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: "24px" }}>
         
         {/* Members Table */}
         <div className="glass-panel" style={{ flex: 1 }}>
