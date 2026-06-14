@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import { TRPCError } from "@trpc/server";
+import crypto from "crypto";
 
 // Custom CSV line parser to handle quotes and commas
 export function parseCSV(csvContent: string) {
@@ -430,6 +431,9 @@ export const importRouter = createTRPCRouter({
       // Execute import in secure database transaction
       const report = await ctx.db.$transaction(async (tx) => {
         const resultReport: any[] = [];
+        const expenseInserts: any[] = [];
+        const splitInserts: any[] = [];
+        const settlementInserts: any[] = [];
 
         for (const row of rows) {
           const rowNum = Number(row._rowNumber);
@@ -502,17 +506,16 @@ export const importRouter = createTRPCRouter({
             const toId = toUser ? userMap[toUser] : null;
 
             if (fromId && toId) {
-              await tx.settlement.create({
-                data: {
-                  groupId: input.groupId,
-                  fromUserId: fromId,
-                  toUserId: toId,
-                  amount: Math.abs(amount), // settlements must be positive
-                  currency,
-                  exchangeRate,
-                  date: parsedDate,
-                  notes: row.notes || `Settlement from import: ${row.description}`,
-                },
+              settlementInserts.push({
+                id: crypto.randomUUID(),
+                groupId: input.groupId,
+                fromUserId: fromId,
+                toUserId: toId,
+                amount: Math.abs(amount), // settlements must be positive
+                currency,
+                exchangeRate,
+                date: parsedDate,
+                notes: row.notes || `Settlement from import: ${row.description}`,
               });
 
               resultReport.push({
@@ -571,12 +574,16 @@ export const importRouter = createTRPCRouter({
           } else if (splitType === "unequal" && row.split_details) {
             const detailsParts = row.split_details.split(";").map(p => p.trim()).filter(Boolean);
             for (const part of detailsParts) {
-              const match = part.match(/(.+)\s+(\d+(?:\.\d+)?)$/);
-              if (match) {
-                const normName = normalizeUsername(match[1]!.trim());
-                const val = parseFloat(match[2]!);
+              const match = part.match(/(.+)\s+(\d+(w+)?)$/); // fallback or regex match
+              const safePart = part.trim();
+              const lastSpaceIdx = safePart.lastIndexOf(" ");
+              if (lastSpaceIdx !== -1) {
+                const nameStr = safePart.substring(0, lastSpaceIdx).trim();
+                const valStr = safePart.substring(lastSpaceIdx + 1).trim();
+                const normName = normalizeUsername(nameStr);
+                const val = parseFloat(valStr);
                 const uid = normName ? userMap[normName] : null;
-                if (uid) {
+                if (uid && !isNaN(val)) {
                   splitDetailsArray.push({ userId: uid, amount: val, percent: null, share: null });
                 }
               }
@@ -614,11 +621,14 @@ export const importRouter = createTRPCRouter({
             let totalShares = 0;
             const entries: { name: string; share: number }[] = [];
             for (const part of detailsParts) {
-              const match = part.match(/(.+)\s+(\d+(?:\.\d+)?)$/);
-              if (match) {
-                const normName = normalizeUsername(match[1]!.trim());
-                const share = parseFloat(match[2]!);
-                if (normName) {
+              const safePart = part.trim();
+              const lastSpaceIdx = safePart.lastIndexOf(" ");
+              if (lastSpaceIdx !== -1) {
+                const nameStr = safePart.substring(0, lastSpaceIdx).trim();
+                const shareStr = safePart.substring(lastSpaceIdx + 1).trim();
+                const normName = normalizeUsername(nameStr);
+                const share = parseFloat(shareStr);
+                if (normName && !isNaN(share)) {
                   entries.push({ name: normName, share });
                   totalShares += share;
                 }
@@ -635,30 +645,29 @@ export const importRouter = createTRPCRouter({
           }
 
           // Create the expense record
-          const expense = await tx.expense.create({
-            data: {
-              groupId: input.groupId,
-              description: row.description || "Imported Split Expense",
-              amount: amount,
-              currency,
-              exchangeRate,
-              paidById: payerId || userMap["Aisha"]!,
-              splitType,
-              date: parsedDate,
-              notes: row.notes || null,
-            },
+          const expenseId = crypto.randomUUID();
+          expenseInserts.push({
+            id: expenseId,
+            groupId: input.groupId,
+            description: row.description || "Imported Split Expense",
+            amount: amount,
+            currency,
+            exchangeRate,
+            paidById: payerId || userMap["Aisha"]!,
+            splitType,
+            date: parsedDate,
+            notes: row.notes || null,
           });
 
           // Create split records
           for (const s of splitDetailsArray) {
-            await tx.split.create({
-              data: {
-                expenseId: expense.id,
-                userId: s.userId,
-                amount: s.amount,
-                percent: s.percent,
-                share: s.share,
-              },
+            splitInserts.push({
+              id: crypto.randomUUID(),
+              expenseId: expenseId,
+              userId: s.userId,
+              amount: s.amount,
+              percent: s.percent,
+              share: s.share,
             });
           }
 
@@ -667,6 +676,17 @@ export const importRouter = createTRPCRouter({
             action: "IMPORTED",
             description: `Imported expense row "${row.description}" of ${currency} ${amount} split among ${splitNames.join(", ")}.`
           });
+        }
+
+        // Perform bulk creations
+        if (expenseInserts.length > 0) {
+          await tx.expense.createMany({ data: expenseInserts });
+        }
+        if (splitInserts.length > 0) {
+          await tx.split.createMany({ data: splitInserts });
+        }
+        if (settlementInserts.length > 0) {
+          await tx.settlement.createMany({ data: settlementInserts });
         }
 
         // Mark session as complete

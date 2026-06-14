@@ -2,8 +2,10 @@
 
 SpeedTrail is a modern, high-fidelity shared expenses management web application built for flatmates (Aisha, Rohan, Priya, Meera, Sam, and Dev). It features time-bound group membership tracking, multi-currency support, a greedy debt simplification engine, individual running-balance audit trails, and an interactive CSV ingestion wizard for handling messy datasets.
 
-*   **Public Deployed URL:** [https://speedtrail.vercel.app/](https://speedtrail.vercel.app/) *(Placeholder)*
-*   **AI Usage Documentation:** See [AI_USAGE.md](file:///Users/viveksudrik/repos/SpeedTrail/AI_USAGE.md) for detailed descriptions of AI tools and course corrections.
+*   **Public Deployed URL:** [https://speedtrail.vercel.app/](https://speedtrail.vercel.app/)
+*   **AI Usage Documentation:** See [AI_USAGE.md](./AI_USAGE.md) for detailed descriptions of AI tools and course corrections.
+*   **Decision Log:** See [DECISIONS.md](./DECISIONS.md) for architectural tradeoffs and design rationale.
+*   **Schema & Anomaly Log:** See [SCOPE.md](./SCOPE.md) for database schema and the 16-anomaly resolution log.
 
 ---
 
@@ -14,14 +16,16 @@ SpeedTrail is a modern, high-fidelity shared expenses management web application
 *   **Database ORM:** Prisma ORM
 *   **Database Engine:** PostgreSQL (Supabase cloud-hosted)
 *   **Styling:** Vanilla CSS (Modern dark glassmorphic UI)
+*   **Deployment:** Vercel
 
 ---
 
 ## 🚀 Getting Started
 
 ### 1. Clone and Install Dependencies
-Ensure you are in the repository directory, then run:
 ```bash
+git clone https://github.com/<your-username>/SpeedTrail.git
+cd SpeedTrail
 npm install
 ```
 
@@ -50,6 +54,18 @@ Boot up the Next.js development server:
 npm run dev
 ```
 Open [http://localhost:3000](http://localhost:3000) in your browser to interact with the application.
+
+---
+
+## ☁️ Deploying to Vercel
+
+1. Push the repository to GitHub.
+2. Import the repository in [Vercel Dashboard](https://vercel.com/new).
+3. Set the following **Environment Variables** in Vercel project settings:
+   *   `DATABASE_URL` — Your Supabase pooler connection string (port `6543` with `?pgbouncer=true`).
+   *   `DIRECT_URL` — Your Supabase direct connection string (port `5432`).
+4. Vercel will automatically detect Next.js and run `npx prisma generate && next build`.
+5. Ensure your Supabase database has been seeded (`npx prisma db seed`) before first use.
 
 ---
 

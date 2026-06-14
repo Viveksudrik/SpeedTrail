@@ -47,3 +47,6 @@ yarn-error.log*
 
 # generated prisma edge build
 /generated
+
+# gemini/antigravity agent workspace
+.gemini
